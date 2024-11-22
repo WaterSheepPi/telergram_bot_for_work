@@ -1,0 +1,361 @@
+const { Telegraf, Markup } = require('telegraf');
+const config = require('./config');
+const fs = require('fs');
+const bot = new Telegraf(config.telegramToken);
+var inputMode = {};
+var userProjects = {};
+var namesProjChoise = {}
+var currentTime = {}
+const projects = ["entry.114962959", "entry.1174823241", "entry.1315587285", "entry.1271011164", "entry.798682550", "entry.529707128", "entry.864116383", "entry.1277828144", "entry.648396435", "entry.1609659424", "entry.1958276645", "entry.1624308407", "entry.1731444995", "entry.1817660369", "entry.1286147655", "entry.1631343816", "entry.267764195", "entry.548035864", "entry.1290202242", "entry.1682447098", "entry.351380903", "entry.1867198783", "entry.839054733", "entry.2029053668", "entry.222491728", "entry.435825602", "entry.842585678", "entry.349424234", "entry.1532343057", "entry.1546192729", "entry.225131034", "entry.1558092545", "entry.923080069", "entry.800611585", "entry.570852682", "entry.1792627242", "entry.626348380", "entry.272220642", "entry.1550213116", "entry.1832892167", "entry.1491611559", "entry.460562156", "entry.983334088", "entry.49608760", "entry.673000119", "entry.535142438", "entry.604339736", "entry.1541318123", "entry.1768968497", "entry.48700471", "entry.1021887040", "entry.1403719617", "entry.172656762"];
+const projectsNames = [
+    "Алкорамка-Про",
+    "Алкозамок-П-01",
+    "Алкозамок-П-02",
+    "Алкозамок-М",
+    "Алкозамок-М-PRO",
+    "Алкозамок-П-PRO",
+    "ВОЛЗ-0.9",
+    "ВОЛЗ-СИ",
+    "Газоанализатор",
+    "ИВЛ/ПЛВ",
+    "Изготовление деталей (СИГНАЛ)",
+    "М-350 МАИ",
+    "М-350 УУНИТ",
+    "М-350 УПКБ",
+    "М-250 УПКБ",
+    "М-350 ПНППК",
+    "М-350 ИСС",
+    "М-350 Самара",
+    "М-350 ПНИПУ",
+    "М-350 ЦАТ",
+    "М-350 ЦАТ-ОСНОВА",
+    "М-350 КБХА",
+    "М-450-М УЗГА",
+    "М-450-М Тула",
+    "М-450-М Силовые машины",
+    "КСО",
+    "Луч-1",
+    "Облакомер (Skydex-15)",
+    "Skydex-9",
+    "Одиссей",
+    "ПЛВ-300 Байконур",
+    "Прометей",
+    "Пыль",
+    "Ремонт-РХБЗ",
+    "Сканер СПИН",
+    "СЛК",
+    "УССО Сервис",
+    "109-СКАНЕР-ДИРЕКТ Ф1",
+    "109-СКАНЕР-ДИРЕКТ Ф2",
+    "109-СКАНЕР-ТЕРРА",
+    "2136-УСТАНОВКА АМК-М-450",
+    "2136-УСТАНОВКА М-150",
+    "2136-УСТАНОВКА М-450",
+    "СЛМ ПО-2.0",
+    "Выращивание деталей",
+    "Держинец-1 РТИ",
+    "Разгон-ППС",
+    "Разгон-СДИ",
+    "Разгон-СН",
+    "Разгон-СО",
+    "Радиофотоника",
+    "Термоконтроль",
+    "Прочее"
+];
+
+bot.start(async (ctx) => {
+    const users = await allUsers();
+    console.log(users);
+    const userId = ctx.from.id;
+    console.log(userId);
+    if (userId in inputMode) return ctx.reply(`Введите имя фамилию согласно примеру.\nИванов Иван Иванович`);
+    if (users.hasOwnProperty(userId)) {
+        ctx.reply(`Вы уже есть в нашей системе под именем ${users[userId].name}\nЖелаете изменить?`, 
+            Markup.inlineKeyboard([
+                Markup.button.callback('👤 Да, изменить', 'yeschange'),
+                Markup.button.callback('📝 Отметиться', 'settime')
+            ])
+        );
+        return;
+    } else {
+        ctx.reply(`Вы отсутствуете в нашей системе\nЖелаете зарегистрироваться?`, 
+            Markup.inlineKeyboard([
+                Markup.button.callback('Да', 'yesregister'),
+                Markup.button.callback('Нет', 'noregister')
+            ])
+        );
+        return;
+    }
+});
+
+bot.on("message", (ctx) => {
+    const userId = ctx.from.id;
+    if (userId in inputMode) {
+        // Здесь обработка режима ввода
+    } else {
+        return ctx.reply(`Сейчас сообщения не обрабатываются.`);
+    }
+    const messageText = ctx.message.text;
+    const words = messageText.trim().split(/\s+/);
+    if (words.length === 3) {
+        const name = ctx.message.text.toUpperCase();
+        writeDataName(userId, name);
+        delete inputMode[userId];
+        ctx.deleteMessage();
+        
+        ctx.reply(`Запомнил вас как\n${name}`, 
+            Markup.inlineKeyboard([
+                Markup.button.callback('📝 Отметиться', 'settime')
+            ])
+        );
+    } else if (isValidDate(messageText)) {
+        delete inputMode[userId];
+        const [day, month, year] = messageText.split('.').map(part => parseInt(part, 10));
+        console.log(day,month,year)
+        currentTime[userId] = { Y: year, M: month, D: day};
+        const buttons = projectsNames.map((project, index) => [Markup.button.callback(`${index} - ${project}`, `project_${index}`)]);
+        ctx.reply('Выберите проекты', Markup.inlineKeyboard(buttons));
+    } else {
+        ctx.reply(`Неверный формат имени или даты`);
+    }
+});
+
+
+bot.action('yesregister', (ctx) => {
+    ctx.deleteMessage(); // Удаляем предыдущее сообщение
+    inputMode[ctx.from.id] = true;
+    console.log(inputMode);
+    ctx.reply('Введите имя фамилию согласно примеру.\нИванов Иван Иванович');
+});
+
+bot.action('yeschange', (ctx) => {
+    ctx.deleteMessage(); // Удаляем предыдущее сообщение
+    inputMode[ctx.from.id] = true;
+    console.log(inputMode);
+    ctx.reply('Введите имя фамилию согласно примеру.\нИванов Иван Иванович');
+});
+
+bot.action('settime', async (ctx) => {
+    ctx.deleteMessage(); // Удаляем предыдущее сообщение
+    const users = await allUsers();
+    const userId = ctx.from.id;
+
+    const keyboard = [
+        [
+            Markup.button.callback('Сегодня', 'today'),
+            Markup.button.callback('Выбрать вручную', 'writetime')
+        ]
+    ];
+    let tex = ''
+    if (users[userId].last) {
+        tex = `\n\nПри выборе "Как в прошлый раз" - Проекты будут выбраны так же как вы это сделали в прошлый раз.`
+        keyboard.push([
+            Markup.button.callback('Как в прошлый раз', 'revind')
+        ]);
+    }
+
+    ctx.reply(`Выберите дату, за которую хотите заполнить. ${tex}`, Markup.inlineKeyboard(keyboard));
+});
+
+
+bot.action('today', async (ctx) => {
+    ctx.deleteMessage(); // Удаляем предыдущее сообщение
+    const users = await allUsers();
+    const userId = ctx.from.id;
+    const currentDate = new Date();
+
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth() + 1; // Месяцы начинаются с 0, поэтому добавляем 1
+    const day = currentDate.getDate();
+    currentTime[userId] = { Y: year, M: month, D: day}
+    const buttons = projectsNames.map((project, index) => [Markup.button.callback(`${index} - ${project}`, `project_${index}`)]);
+    ctx.reply('Выберите проекты', Markup.inlineKeyboard(buttons));
+});
+bot.action('writetime', (ctx) => {
+    ctx.deleteMessage(); // Удаляем предыдущее сообщение
+    inputMode[ctx.from.id] = true;
+    ctx.reply('Пожалуйста, введите дату в формате "ДД.ММ.ГГГГ", например "01.01.2024".');
+});
+bot.action('revind', (ctx) => {
+    ctx.reply('Подтвердите отправку формы.\nФорма будет составлена следующим образом.\nДата:');
+})
+
+
+projectsNames.forEach((project, index) => {
+    bot.action(`project_${index}`, (ctx) => {
+        ctx.deleteMessage(); // Удаляем предыдущее сообщение
+        const userId = ctx.from.id;
+        if (!userProjects[userId]) {
+            userProjects[userId] = [];
+        }
+        userProjects[userId].push(projects[index]);
+        if (namesProjChoise[userId]) {
+            namesProjChoise[userId].push(project)
+        } else {
+            // Если пользователь не существует, создаем новый объект данных
+            namesProjChoise[userId] = [];
+            namesProjChoise[userId].push(project)
+        }
+        const selectedProjects = namesProjChoise[userId].map(proj => `☑️ ${proj}`).join('\n'); 
+
+        ctx.reply(`Вы выбрали проект: ${project}\nВсего вы выбрали:\n${selectedProjects}\n\nВсего вы выбрали ${userProjects[userId]}`, 
+            Markup.inlineKeyboard([
+                Markup.button.callback('Добавить еще проект', 'add_more_projects'),
+                Markup.button.callback('Готово', 'done')
+            ])
+        );
+    });
+});
+
+bot.action('add_more_projects', (ctx) => {
+    ctx.deleteMessage(); // Удаляем предыдущее сообщение
+    const buttons = projectsNames.map((project, index) => [Markup.button.callback(`${index} - ${project}`, `project_${index}`)]);
+    ctx.reply('Выберите проекты', Markup.inlineKeyboard(buttons));
+});
+
+bot.action('done', (ctx) => {
+    ctx.deleteMessage(); // Удаляем предыдущее сообщение
+    const userId = ctx.from.id;
+    if (!userProjects[userId] || userProjects[userId].length === 0) {
+        return ctx.reply('Вы не выбрали ни одного проекта.');
+    }
+    // Здесь вы можете вызвать функцию для отправки данных
+
+    sendForm(userId);
+    ctx.reply('Данные успешно отправлены.');
+});
+
+bot.launch();
+
+function allUsers() {
+    return new Promise((resolve, reject) => {
+        fs.readFile('users.json', 'utf8', (err, data) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            try {
+                const users = JSON.parse(data);
+                resolve(users);
+            } catch (error) {
+                reject(error);
+            }
+        });
+    });
+}
+
+async function writeDataName(user, data) {
+    const userDataAll = await allUsers();
+
+    if (userDataAll[user]) {
+        userDataAll[user].name = data;
+    } else {
+        // Если пользователь не существует, создаем новый объект данных
+        userDataAll[user] = { name: data };
+    }
+    const jsonData = JSON.stringify(userDataAll, null, 2);
+    fs.writeFile('./users.json', jsonData, 'utf8', (err) => {
+        if (err) {
+            console.error('Ошибка записи файла:', err);
+        } else {
+            console.log('Данные успешно записаны в файл.');
+        }
+    });
+}
+async function writeDataLast(user, data) {
+    const userDataAll = await allUsers();
+
+    if (userDataAll[user]) {
+        userDataAll[user].last = data;
+    } else {
+        // Если пользователь не существует, создаем новый объект данных
+        userDataAll[user] = { name: data };
+    }
+    const jsonData = JSON.stringify(userDataAll, null, 2);
+    fs.writeFile('./users.json', jsonData, 'utf8', (err) => {
+        if (err) {
+            console.error('Ошибка записи файла:', err);
+        } else {
+            console.log('Данные успешно записаны в файл.');
+        }
+    });
+}
+
+async function sendForm(userId) {
+    const userName = await allUsers()
+    const GoogleURL = 'https://docs.google.com/forms/d/e/1FAIpQLSdikzcL-InKRw_lbmpTysxtwQx0Wb7l8F2fROJkJiaNyCNp7A/formResponse';
+    const urlReferer = 'https://docs.google.com/forms/d/e/1FAIpQLSdikzcL-InKRw_lbmpTysxtwQx0Wb7l8F2fROJkJiaNyCNp7A/viewform';
+    let formData = new FormData();
+    console.log(`Год ` + currentTime[userId].Y)
+    console.log(`Месяц ` + currentTime[userId].M)
+    console.log(`День ` + currentTime[userId].D)
+    console.log(`entry.1970048429 ` + userName[userId].name)
+    distributeHours(projects, userProjects[userId]);
+    console.log(`entry.172335038 ` + ``)
+    writeDataLast(userId, userProjects[userId])
+}
+
+
+
+
+
+
+
+
+/*function sendForm(year, month, day, userName) {
+    const GoogleURL = 'https://docs.google.com/forms/d/e/1FAIpQLSdikzcL-InKRw_lbmpTysxtwQx0Wb7l8F2fROJkJiaNyCNp7A/formResponse';
+    const urlReferer = 'https://docs.google.com/forms/d/e/1FAIpQLSdikzcL-InKRw_lbmpTysxtwQx0Wb7l8F2fROJkJiaNyCNp7A/viewform';
+    let formData = new FormData();
+    formData.append('entry.210931804_year', `${year}`);
+    formData.append('entry.210931804_month', `${month}`);
+    formData.append('entry.210931804_day', `${day}`);
+    formData.append('entry.1970048429', `${userName}`); // Имя
+    formData.append('entry.1036971134', `Нет`);
+    formData.append('entry.744013520', ``); // Город командировки
+    formData.append('entry.460071324', ``); // Отпуск больничный
+    distributeHours(projects, userProjects[userId]);
+    formData.append('entry.172335038', ``); // комментарий
+
+    fetch(GoogleURL, {
+        method: 'POST',
+        headers: {
+            'Referer': urlReferer
+        },
+        body: formData
+    }).then(response => {
+        console.log('Данные успешно отправлены:', response);
+    }).catch(error => {
+        console.error('Ошибка при отправке данных:', error);
+    });
+}
+*/
+const distributeHours = (projects, pon, totalHours = 8) => {
+    let projectsCount = pon.length;
+    let hoursPerProject = [];
+    let remainingHours = totalHours;
+
+    for (let i = 0; i < projectsCount; i++) {
+        let hours = Math.floor(remainingHours / (projectsCount - i) * 2) / 2; // округляем до ближайшего 0.5
+        hoursPerProject.push(hours);
+        remainingHours -= hours;
+    }
+
+    let hoursMap = {};
+    pon.forEach((projectId, index) => {
+        hoursMap[projectId] = hoursPerProject[index];
+    });
+
+    projects.forEach((projectId) => {
+        if (hoursMap[projectId] !== undefined) {
+            //formData.append(`entry.${projectId}`, `${hoursMap[projectId]}`);
+            console.log(`entry.${projectId}, ${hoursMap[projectId]}`);
+        } else {
+            //formData.append(`entry.${projectId}`, ``);
+            console.log(`entry.${projectId}`);
+        }
+    });
+};
+const dateRegex = /^\d{2}\.\d{2}\.\d{4}$/
+function isValidDate(text) {
+    return dateRegex.test(text);
+}

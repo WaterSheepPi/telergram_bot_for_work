@@ -1,0 +1,6 @@
+@echo off
+:loop
+echo Starting bot...
+node index.js
+echo Bot crashed. Restarting...
+goto loop
